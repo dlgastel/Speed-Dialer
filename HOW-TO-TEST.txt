@@ -1,0 +1,12 @@
+╔══════════════════════════════════════════════════════════════╗
+║               SPEED DIALER  —  TESTER GUIDE                 ║
+╚══════════════════════════════════════════════════════════════╝
+
+There are TWO pages:
+
+  📱  index.html   →  The CALLER (for the elderly person)
+  📱  receive.html →  The RECEIVER (for family / friends)
+
+════════════════════════════════════════════
+ QUICK START (5 minutes)
+════════════════════════════════════════════
