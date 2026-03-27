@@ -85,14 +85,31 @@
     #empty-state h2 { font-size:22px; margin-bottom:8px; color:#555; }
 
     /* ── MICROPHONE BUTTON ── */
-    #mic-btn { position:fixed; bottom:28px; left:50%; transform:translateX(-50%); z-index:500;
-      width:64px; height:64px; border-radius:50%; background:var(--blue); color:#fff;
+    #mic-btn { position:relative; width:64px; height:64px; border-radius:50%; background:var(--blue); color:#fff;
       border:none; font-size:28px; cursor:pointer; box-shadow:0 4px 20px rgba(52,152,219,.4);
       display:flex; align-items:center; justify-content:center;
-      transition:transform .15s,box-shadow .15s; }
-    #mic-btn:active { transform:translateX(-50%) scale(.92); }
+      transition:transform .15s,box-shadow .15s; flex-shrink:0; }
+    #mic-btn:active { transform:scale(.92); }
     #mic-btn:hover { box-shadow:0 6px 28px rgba(52,152,219,.6); }
     #mic-btn.hidden { display:none; }
+    #wake-word-toggle.active { background:var(--red); animation:pulseBtn 1.5s infinite; }
+    @keyframes pulseBtn { 0%,100%{box-shadow:0 0 0 0 rgba(231,76,60,.4)} 50%{box-shadow:0 0 0 8px rgba(231,76,60,0)} }
+
+    /* ── CONTACT STATUS ── */
+    .contact-card.offline { opacity:0.5; filter:grayscale(40%); }
+    .contact-card.offline:hover { border-color:#ccc; }
+    .contact-status-dot { width:12px; height:12px; border-radius:50%; position:absolute; top:12px; right:12px;
+      border:2px solid #fff; box-shadow:0 1px 3px rgba(0,0,0,.2); }
+    .contact-status-dot.online { background:var(--green); }
+    .contact-status-dot.offline { background:#ccc; }
+    .contact-card { position:relative; }
+
+    /* ── OFFLINE MESSAGE ── */
+    #offline-msg { position:fixed; bottom:110px; left:50%; transform:translateX(-50%); z-index:600;
+      background:#333; color:#fff; padding:14px 22px; border-radius:16px; font-size:14px;
+      max-width:340px; text-align:center; line-height:1.4; box-shadow:0 4px 16px rgba(0,0,0,.3);
+      display:none; animation:slideUp .25s ease; }
+    #offline-msg.show { display:block; }
 
     /* ── OVERLAYS ── */
     .overlay { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; z-index:100; animation:fadeIn .2s ease; }
@@ -317,8 +334,11 @@
 <!-- ── CONTACT GRID ── -->
 <div id="contact-grid-wrapper"><div id="contact-grid"></div></div>
 
-<!-- ── MICROPHONE BUTTON ── -->
-<button id="mic-btn" title="Voice Command" aria-label="Voice Command">🎤</button>
+<!-- ── VOICE CONTROLS ── -->
+<div id="voice-controls" style="position:fixed;bottom:28px;left:50%;transform:translateX(-50%);z-index:500;display:flex;gap:10px;align-items:center">
+  <button id="wake-word-toggle" title="Enable/Disable wake word listening" style="background:rgba(0,0,0,.6);color:#fff;border:none;border-radius:22px;padding:10px 16px;font-size:13px;font-weight:600;cursor:pointer;transition:all .2s;white-space:nowrap">👂 Wake Word</button>
+  <button id="mic-btn" title="Push to talk" aria-label="Voice Command">🎤</button>
+</div>
 
 <!-- ── CALL TYPE MODAL ── -->
 <div class="overlay" id="call-modal" style="display:none">
@@ -646,6 +666,7 @@
 </div>
 
 <div id="toast"></div>
+<div id="offline-msg"></div>
 
 <script>
 // ═══════════════════════════════════════════════════════════════
@@ -767,139 +788,246 @@ class VoiceCommandSystem {
     this.recognition = null;
     this.isListening = false;
     this.isProcessing = false;
-    this.wakeWordActive = false;
+    this.wakeWordEnabled = false; // Don't auto-listen until user enables
+    this.micPermissionGranted = false;
     this.synthesis = window.speechSynthesis;
-    this.initRecognition();
+    this.commandMode = false; // true when wake word heard, waiting for command
+    this.commandTimeout = null;
+    this._setupRecognition();
   }
 
-  initRecognition() {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
+  _setupRecognition() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) {
       console.warn('Speech Recognition not supported');
-      document.getElementById('mic-btn').classList.add('hidden');
+      const micBtn = document.getElementById('mic-btn');
+      if (micBtn) micBtn.style.display = 'none';
       return;
     }
-    this.recognition = new SpeechRecognition();
-    this.recognition.continuous = true;
+    this.recognition = new SR();
+    this.recognition.continuous = false; // NOT continuous — avoids repeated permission prompts
     this.recognition.interimResults = true;
     this.recognition.lang = 'en-US';
+    this.recognition.maxAlternatives = 1;
 
     this.recognition.onstart = () => {
       this.isListening = true;
-      document.getElementById('voice-indicator').classList.add('active');
+      const vi = document.getElementById('voice-indicator');
+      if (vi) vi.classList.add('active');
     };
 
     this.recognition.onresult = (e) => {
-      let interim = '';
+      let finalText = '';
+      let interimText = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
-        const transcript = e.results[i].transcript.toLowerCase();
         if (e.results[i].isFinal) {
-          this.processCommand(transcript);
+          finalText += e.results[i][0].transcript;
         } else {
-          interim = transcript;
+          interimText += e.results[i][0].transcript;
         }
       }
-      if (interim) {
-        document.getElementById('recognized-text').textContent = interim;
-      }
+      const rtEl = document.getElementById('recognized-text');
+      if (rtEl && (interimText || finalText)) rtEl.textContent = interimText || finalText;
+      if (finalText) this._handleResult(finalText.toLowerCase().trim());
     };
 
     this.recognition.onend = () => {
       this.isListening = false;
-      document.getElementById('voice-indicator').classList.remove('active');
-      if (!this.isProcessing) {
-        this.startListening();
+      const vi = document.getElementById('voice-indicator');
+      if (vi) vi.classList.remove('active');
+      // Only auto-restart if wake word mode is enabled AND we're not processing a command
+      if (this.wakeWordEnabled && !this.isProcessing && !this.commandMode && state.callState === 'idle') {
+        // Small delay to avoid rapid restart loops and permission re-prompts
+        setTimeout(() => this._safeStart(), 1500);
       }
     };
 
-    this.recognition.onerror = () => {
+    this.recognition.onerror = (e) => {
       this.isListening = false;
-      document.getElementById('voice-indicator').classList.remove('active');
+      const vi = document.getElementById('voice-indicator');
+      if (vi) vi.classList.remove('active');
+      // 'not-allowed' = permission denied — stop trying
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+        this.wakeWordEnabled = false;
+        this._updateWakeWordUI();
+        showToast('Microphone permission denied — voice commands disabled');
+        return;
+      }
+      // 'aborted' or 'no-speech' are normal — restart if wake word mode on
+      if (this.wakeWordEnabled && !this.isProcessing && state.callState === 'idle') {
+        setTimeout(() => this._safeStart(), 2000);
+      }
     };
-
-    this.startListening();
   }
 
-  startListening() {
-    if (this.recognition && !this.isListening && state.callState === 'idle') {
-      try {
-        this.recognition.start();
-      } catch(e) {}
+  // Request mic permission once via getUserMedia (browsers persist this choice)
+  async requestMicPermission() {
+    if (this.micPermissionGranted) return true;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach(t => t.stop()); // Release immediately
+      this.micPermissionGranted = true;
+      return true;
+    } catch(e) {
+      showToast('Microphone access needed for voice commands');
+      return false;
     }
   }
 
-  stopListening() {
-    if (this.recognition && this.isListening) {
-      try {
-        this.recognition.stop();
-      } catch(e) {}
+  async enableWakeWord() {
+    const granted = await this.requestMicPermission();
+    if (!granted) return;
+    this.wakeWordEnabled = true;
+    this._updateWakeWordUI();
+    this._safeStart();
+    showToast('Wake word listening enabled — say "Hey Speed Dialer"');
+  }
+
+  disableWakeWord() {
+    this.wakeWordEnabled = false;
+    this._updateWakeWordUI();
+    this._safeStop();
+  }
+
+  toggleWakeWord() {
+    if (this.wakeWordEnabled) this.disableWakeWord();
+    else this.enableWakeWord();
+  }
+
+  _updateWakeWordUI() {
+    const btn = document.getElementById('wake-word-toggle');
+    if (btn) {
+      btn.textContent = this.wakeWordEnabled ? '🔴 Listening' : '👂 Wake Word';
+      btn.classList.toggle('active', this.wakeWordEnabled);
     }
   }
 
-  processCommand(transcript) {
+  _safeStart() {
+    if (!this.recognition || this.isListening || state.callState !== 'idle') return;
+    try { this.recognition.start(); } catch(e) {}
+  }
+
+  _safeStop() {
+    if (!this.recognition) return;
+    try { this.recognition.stop(); } catch(e) {}
+    try { this.recognition.abort(); } catch(e) {}
+    this.isListening = false;
+  }
+
+  _handleResult(text) {
     if (state.callState !== 'idle') return;
 
+    // Check for wake word
     const wakeWords = ['hey speed dialer', 'speed dialer'];
-    let isWakeWord = false;
-    for (const word of wakeWords) {
-      if (transcript.includes(word)) {
-        isWakeWord = true;
-        transcript = transcript.replace(word, '').trim();
+    let triggered = false;
+    for (const ww of wakeWords) {
+      if (text.includes(ww)) {
+        triggered = true;
+        text = text.replace(ww, '').trim();
         break;
       }
     }
 
-    if (!isWakeWord) return;
+    // If in command mode (mic button pressed), don't require wake word
+    if (this.commandMode) {
+      triggered = true;
+    }
 
-    this.showListening();
+    if (!triggered) return;
 
-    if (transcript.match(/^(get me|call)\s+(.+)$/i)) {
-      const match = transcript.match(/^(get me|call)\s+(.+)$/i);
-      const name = match[2].trim();
-      const contact = state.contacts.find(c =>
-        c.nickName && c.nickName.toLowerCase() === name.toLowerCase()
-      );
-
-      if (contact) {
-        this.speak(`Found ${contact.nickName}. Voice or video?`);
-        showVoiceChoiceModal(contact);
-      } else {
-        this.speak(`I don't know anyone called ${name}. Please try again.`);
-      }
+    // Try to parse "get me X" or "call X"
+    const match = text.match(/(?:get me|call)\s+(.+)/i);
+    if (match) {
+      const name = match[1].trim();
+      this._findAndCall(name);
+    } else if (text.match(/^(voice|video|audio)$/i)) {
+      // Response to "voice or video?" prompt
+      // This is handled by the voice choice modal
+    } else if (text.length > 0) {
+      // Maybe they just said a name after wake word
+      this._findAndCall(text);
     } else {
-      this.speak('I didn\'t understand that. Try saying "Get me Mary" or "Call John".');
+      // Just wake word, no command yet — enter command mode
+      this.commandMode = true;
+      this.speak('I\'m listening. Who would you like to call?');
+      this._showListeningPopup(5000);
+      clearTimeout(this.commandTimeout);
+      this.commandTimeout = setTimeout(() => {
+        this.commandMode = false;
+        this._hideListeningPopup();
+      }, 6000);
+      // Restart recognition to catch the next phrase
+      setTimeout(() => this._safeStart(), 500);
     }
   }
 
-  showListening() {
+  _findAndCall(name) {
+    this.commandMode = false;
+    clearTimeout(this.commandTimeout);
+    const contact = state.contacts.find(c =>
+      c.nickName && c.nickName.toLowerCase() === name.toLowerCase()
+    ) || state.contacts.find(c =>
+      c.firstName && c.firstName.toLowerCase() === name.toLowerCase()
+    );
+
+    if (contact) {
+      this.speak(`Calling ${contact.nickName}. Voice or video?`);
+      showVoiceChoiceModal(contact);
+    } else {
+      this.speak(`I don't know anyone called ${name}. Please try again.`);
+      this._showListeningPopup(3000);
+    }
+  }
+
+  _showListeningPopup(duration) {
     const popup = document.getElementById('listening-popup');
-    popup.classList.add('show');
-    document.getElementById('recognized-text').textContent = '';
-    setTimeout(() => { popup.classList.remove('show'); }, 3000);
+    if (popup) {
+      popup.classList.add('show');
+      const rtEl = document.getElementById('recognized-text');
+      if (rtEl) rtEl.textContent = '';
+      if (duration) setTimeout(() => this._hideListeningPopup(), duration);
+    }
+  }
+
+  _hideListeningPopup() {
+    const popup = document.getElementById('listening-popup');
+    if (popup) popup.classList.remove('show');
   }
 
   speak(text) {
+    if (!this.synthesis) return;
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 1;
+    utterance.rate = 0.9;
+    utterance.pitch = 1;
     this.synthesis.speak(utterance);
   }
 
-  triggerMicButton() {
-    if (state.callState !== 'idle') return;
+  // Push-to-talk: single session, no continuous listening
+  async triggerMicButton() {
+    if (state.callState !== 'idle' || !this.recognition) return;
+    const granted = await this.requestMicPermission();
+    if (!granted) return;
+
     this.isProcessing = true;
-    this.stopListening();
+    this.commandMode = true;
+    this._safeStop();
+
+    this.speak('Who would you like to call?');
+    this._showListeningPopup(7000);
+
+    // Wait for speech to finish, then start listening
     setTimeout(() => {
-      const popup = document.getElementById('listening-popup');
-      popup.classList.add('show');
-      document.getElementById('recognized-text').textContent = '';
-      this.recognition.abort();
-      try { this.recognition.start(); } catch(e) {}
+      this._safeStart();
+      // Auto-timeout after 6 seconds
       setTimeout(() => {
         this.isProcessing = false;
-        popup.classList.remove('show');
-        this.startListening();
-      }, 5000);
-    }, 100);
+        this.commandMode = false;
+        this._hideListeningPopup();
+        if (this.wakeWordEnabled) {
+          setTimeout(() => this._safeStart(), 500);
+        }
+      }, 6000);
+    }, 800);
   }
 }
 
@@ -1037,6 +1165,62 @@ function checkUrlContactCard() {
 // ═══════════════════════════════════════════════════════════════
 // RENDER CONTACTS
 // ═══════════════════════════════════════════════════════════════
+// ── Contact online/offline status tracking ──
+const contactStatus = {}; // peerId → 'online'|'offline'
+let statusCheckInterval = null;
+
+function checkContactStatuses() {
+  if (!state.peer || state.peer.destroyed) return;
+  const panelContacts = state.contacts.filter(c => c.showOnPanel && c.peerId && c.peerId.trim());
+  panelContacts.forEach(c => {
+    const pid = c.peerId.trim();
+    if (!pid) return;
+    try {
+      const conn = state.peer.connect(pid, { reliable: false, serialization: 'none' });
+      const timeout = setTimeout(() => {
+        try { conn.close(); } catch(e) {}
+        if (contactStatus[pid] !== 'offline') {
+          contactStatus[pid] = 'offline';
+          updateContactCardStatus(c);
+        }
+      }, 4000);
+      conn.on('open', () => {
+        clearTimeout(timeout);
+        contactStatus[pid] = 'online';
+        updateContactCardStatus(c);
+        try { conn.close(); } catch(e) {}
+      });
+      conn.on('error', () => {
+        clearTimeout(timeout);
+        if (contactStatus[pid] !== 'offline') {
+          contactStatus[pid] = 'offline';
+          updateContactCardStatus(c);
+        }
+      });
+    } catch(e) {
+      contactStatus[pid] = 'offline';
+      updateContactCardStatus(c);
+    }
+  });
+}
+
+function updateContactCardStatus(contact) {
+  const card = document.querySelector(`.contact-card[data-id="${contact.id}"]`);
+  if (!card) return;
+  const isOnline = contactStatus[contact.peerId?.trim()] === 'online';
+  card.classList.toggle('offline', !isOnline);
+  const dot = card.querySelector('.contact-status-dot');
+  if (dot) {
+    dot.className = 'contact-status-dot ' + (isOnline ? 'online' : 'offline');
+  }
+}
+
+function startStatusChecks() {
+  checkContactStatuses();
+  clearInterval(statusCheckInterval);
+  statusCheckInterval = setInterval(checkContactStatuses, 30000); // Every 30 seconds
+}
+
 function renderContacts() {
   const grid = document.getElementById('contact-grid');
   grid.innerHTML = '';
@@ -1047,11 +1231,17 @@ function renderContacts() {
   }
   panel.forEach(c => {
     const card = document.createElement('div');
-    card.className = 'contact-card';
+    const pid = c.peerId?.trim();
+    const isOnline = pid ? contactStatus[pid] === 'online' : false;
+    const isUnknown = pid ? !(pid in contactStatus) : true;
+    card.className = 'contact-card' + (!pid || (!isOnline && !isUnknown) ? ' offline' : '');
     card.setAttribute('role','button'); card.setAttribute('tabindex','0');
     card.setAttribute('aria-label','Call '+c.nickName);
-    const fullName = c.firstName + (c.lastName ? ' ' + c.lastName : '');
-    card.innerHTML = photoOrAvatar(c, 100, 40) +
+    card.setAttribute('data-id', c.id);
+    const statusClass = !pid ? 'offline' : (isUnknown ? 'offline' : (isOnline ? 'online' : 'offline'));
+    card.innerHTML =
+      `<div class="contact-status-dot ${statusClass}"></div>` +
+      photoOrAvatar(c, 100, 40) +
       `<div class="contact-name">${esc(c.nickName)}</div>` +
       (c.relationship ? `<div class="contact-relation">${relationshipEmoji(c.relationship)}</div>` : '');
     card.addEventListener('click', () => onContactTap(c));
@@ -1180,13 +1370,40 @@ function setConnStatus(s) {
 // ═══════════════════════════════════════════════════════════════
 // OUTGOING CALL
 // ═══════════════════════════════════════════════════════════════
+let offlineMsgTimeout = null;
+function showOfflineMessage(name) {
+  const el = document.getElementById('offline-msg');
+  el.innerHTML = `<strong>${esc(name)} is not online right now.</strong><br><br>` +
+    `Ask ${esc(name)} to open the Speed Dialer receiver link on their phone or computer, ` +
+    `and make sure their internet is connected. Once they're online, their picture will brighten up and you can call them.`;
+  el.classList.add('show');
+  clearTimeout(offlineMsgTimeout);
+  offlineMsgTimeout = setTimeout(() => el.classList.remove('show'), 8000);
+  el.onclick = () => { el.classList.remove('show'); clearTimeout(offlineMsgTimeout); };
+}
+
 function onContactTap(contact) {
   if (state.callState!=='idle') return;
+  const pid = contact.peerId?.trim();
+
+  // No Speed Dialer ID at all
+  if (!pid) {
+    showOfflineMessage(contact.nickName || contact.firstName);
+    return;
+  }
+
+  // Check if offline
+  const isOnline = contactStatus[pid] === 'online';
+  if (!isOnline && pid in contactStatus) {
+    showOfflineMessage(contact.nickName || contact.firstName);
+    return;
+  }
+
+  // Online or unknown status — show call modal
   state.selectedContact = contact;
   const wrap = document.getElementById('call-modal-photo-wrap');
   wrap.innerHTML = bigPhotoOrAvatar(contact, 110, 44);
   document.getElementById('call-modal-name').textContent = contact.nickName || contact.firstName;
-  const fullName = contact.firstName + (contact.lastName ? ' ' + contact.lastName : '');
   document.getElementById('call-modal-relation').textContent = contact.relationship ? relationshipEmoji(contact.relationship) : '';
   document.getElementById('call-modal').style.display = 'flex';
 }
@@ -1823,6 +2040,20 @@ document.getElementById('btn-native-share').addEventListener('click', () => {
 document.getElementById('mic-btn').addEventListener('click', () => {
   if (voiceSystem) voiceSystem.triggerMicButton();
 });
+
+document.getElementById('wake-word-toggle').addEventListener('click', () => {
+  if (voiceSystem) voiceSystem.toggleWakeWord();
+});
+
+// Start status checks after peer connects
+const origSetConnStatus = setConnStatus;
+setConnStatus = function(s) {
+  origSetConnStatus(s);
+  if (s === 'connected') {
+    // Delay initial check to let peer fully establish
+    setTimeout(startStatusChecks, 3000);
+  }
+};
 
 pinInput();
 </script>
