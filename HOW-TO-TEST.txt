@@ -1,12 +1,160 @@
 ╔══════════════════════════════════════════════════════════════╗
-║               SPEED DIALER  —  TESTER GUIDE                 ║
+║            SPEED DIALER v0.2  —  TESTER GUIDE               ║
 ╚══════════════════════════════════════════════════════════════╝
 
-There are TWO pages:
+There are THREE pages:
 
-  📱  index.html   →  The CALLER (for the elderly person)
-  📱  receive.html →  The RECEIVER (for family / friends)
+  index.html   →  The CALLER (for the elderly person)
+  receive.html →  The RECEIVER (for family / friends)
+  admin.html   →  REMOTE ADMIN (for managing contacts remotely)
 
-════════════════════════════════════════════
+════════════════════════════════════════
  QUICK START (5 minutes)
-════════════════════════════════════════════
+════════════════════════════════════════
+
+STEP 1 — Family member opens receive.html
+  • Open receive.html in a browser (Chrome / Edge recommended)
+  • Allow camera and microphone when prompted
+  • Enter your name (e.g. "Mary") and click Save
+  • Copy your ID shown in blue (looks like: sd-abc123)
+
+STEP 2 — Set up the Speed Dialer panel (index.html)
+  • Open index.html in a browser
+  • Create a 4-digit PIN when prompted
+  • Tap Settings (top right gear icon)
+  • Enter a name like "Grandma Alice"
+  • Tap "Manage Contact List"
+  • Tap "Add Contact"
+  • Enter: First Name, Last Name, Nickname (shown on button),
+    Relationship, and the receiver's Speed Dialer ID
+  • Optionally upload a photo
+  • Tap Save Contact
+
+STEP 3 — Make a call
+  • On index.html: tap the contact's photo
+  • Choose Video Call or Voice Call
+  • On receive.html: accept the incoming call
+  • Both sides should see/hear each other
+
+════════════════════════════════════════
+ NEW IN v0.2: VOICE COMMANDS
+════════════════════════════════════════
+
+The Speed Dialer now responds to voice commands!
+
+Option A — Wake Word (hands-free):
+  • Say "Hey Speed Dialer" or "Speed Dialer"
+  • Wait for the pulsing microphone indicator
+  • Say "Get me Mary" or "Call Mary" (use the nickname)
+  • When asked "Voice or video?", say your choice
+  • The call starts automatically!
+
+Option B — Push-to-Talk Button:
+  • Tap the large microphone button at the bottom of the screen
+  • Say "Get me Mary" or "Call Mary"
+  • Follow the voice/video prompt
+
+Notes:
+  • Works best in Chrome (Web Speech API required)
+  • Voice commands are disabled during active calls
+  • Names are matched against contact nicknames
+
+════════════════════════════════════════
+ NEW IN v0.2: ENCRYPTED STORAGE
+════════════════════════════════════════
+
+All contact data is now stored in an encrypted IndexedDB database:
+  • Uses AES-GCM encryption via Web Crypto API
+  • Encryption key derived from your PIN using PBKDF2
+  • Data is encrypted at rest in the browser
+  • Falls back to localStorage if Web Crypto unavailable
+
+════════════════════════════════════════
+ NEW IN v0.2: EXPANDED CONTACTS
+════════════════════════════════════════
+
+Contact cards now support:
+  • First Name, Last Name
+  • Nickname (the name shown on the speed dial button)
+  • Relationship (Spouse, Daughter, Son, Friend, Doctor, etc.)
+  • Phone number with country code
+  • Phone type (Mobile, Home, Work, Other)
+  • Email address
+  • Photo
+  • Speed Dialer ID (for calling)
+  • Show/hide on speed dial panel
+
+════════════════════════════════════════
+ NEW IN v0.2: REMOTE ADMIN
+════════════════════════════════════════
+
+Family members can remotely manage contacts:
+
+SETUP (on the Speed Dialer device):
+  1. Open Settings
+  2. Scroll down to "Remote Admin Access"
+  3. Toggle ON "Enable Remote Admin"
+  4. Set an admin password
+  5. Share the Admin Connection ID with the family member
+
+REMOTE EDITING (on any other device):
+  1. Open admin.html in a browser
+  2. Enter the Admin Connection ID from the Speed Dialer
+  3. Enter the admin password
+  4. Click Connect
+  5. You can now add, edit, or delete contacts remotely
+  6. Changes appear on the Speed Dialer in real-time
+
+════════════════════════════════════════
+ SHARING FOR REMOTE TESTING
+════════════════════════════════════════
+
+To test with someone on a different network, you need HTTPS.
+Easiest free options:
+
+Option A — GitHub Pages (current deployment):
+  • Files are hosted at: https://dlgastel.github.io/Speed-Dialer/
+  • Upload updated files to the GitHub repo
+  • Changes deploy automatically
+
+Option B — Netlify Drop (no account needed):
+  1. Go to https://app.netlify.com/drop
+  2. Drag the "speed-dialer-v0.1" folder onto the page
+  3. You get a public URL instantly
+
+════════════════════════════════════════
+ BROWSER REQUIREMENTS
+════════════════════════════════════════
+
+• Chrome, Edge, or Firefox (latest version)
+• Must allow Camera and Microphone permissions
+• HTTPS required for camera/mic (automatic when deployed)
+  → For local testing: Chrome allows localhost without HTTPS
+• Voice commands: Chrome recommended (best Speech API support)
+
+════════════════════════════════════════
+ KNOWN LIMITATIONS (v0.2)
+════════════════════════════════════════
+
+• Calls may fail through strict firewalls (corporate networks)
+  → Works best on home wifi or mobile data
+• The signaling server (PeerJS cloud) is free and may occasionally
+  be slow — for production we'll self-host
+• Voice commands work best in quiet environments
+• Wake word detection may have false positives in noisy rooms
+• Android app coming next — for now, family receives via browser
+• Remote admin requires both devices to be online simultaneously
+
+════════════════════════════════════════
+ FEEDBACK TO COLLECT FROM TESTERS
+════════════════════════════════════════
+
+1. Was the contact photo big enough?
+2. Was "Video Call" vs "Voice Call" clear?
+3. Was the Hang Up button easy to find?
+4. Did call quality feel acceptable?
+5. Any confusion during setup?
+6. Did voice commands work reliably?
+7. Was the "Get me [name]" flow intuitive?
+8. Was the remote admin easy to set up?
+9. Did contacts sync properly via remote admin?

@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Speed Dialer Admin</title>
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <style>
+    :root {
+      --bg: #f5f7fa;
+      --header-bg: #1e3a5f;
+      --header-text: #fff;
+      --card-bg: #fff;
+      --card-shadow: 0 2px 12px rgba(0,0,0,.1);
+      --card-radius: 12px;
+      --blue: #3498db;
+      --green: #2ecc71;
+      --red: #e74c3c;
+      --gray: #7f8c8d;
+      --light-gray: #ecf0f1;
+      --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; font-family: var(--font); }
+    body { background: var(--bg); display: flex; flex-direction: column; }
+
+    /* ── HEADER ── */
+    #header {
+      background: var(--header-bg);
+      color: var(--header-text);
+      padding: 18px 24px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.15);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    #header h1 { font-size: 24px; font-weight: 700; }
+    #header-status {
+      font-size: 13px;
+      color: rgba(255,255,255,.7);
+      margin-top: 2px;
+    }
+    .status-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 6px;
+      vertical-align: middle;
+      background: #aaa;
+    }
+    .status-dot.connected { background: var(--green); }
+    .status-dot.error { background: var(--red); }
+
+    /* ── MAIN CONTENT ── */
+    #main { flex: 1; overflow-y: auto; padding: 24px; }
+    .container { max-width: 900px; margin: 0 auto; }
+
+    /* ── CONNECTION FORM ── */
+    #connection-form {
+      background: var(--card-bg);
+      border-radius: var(--card-radius);
+      padding: 28px;
+      box-shadow: var(--card-shadow);
+      margin-bottom: 24px;
+    }
+    .form-title { font-size: 18px; font-weight: 700; margin-bottom: 16px; color: #1a1a2e; }
+    .form-row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 12px; }
+    .form-group { flex: 1; min-width: 200px; }
+    .form-label { display: block; font-size: 12px; font-weight: 600; color: #666; text-transform: uppercase; margin-bottom: 5px; }
+    .form-input {
+      width: 100%;
+      padding: 11px 13px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 14px;
+      font-family: var(--font);
+      outline: none;
+      transition: border-color .15s;
+    }
+    .form-input:focus { border-color: var(--blue); }
+    .btn-connect {
+      background: var(--blue);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 11px 24px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: filter .15s;
+    }
+    .btn-connect:hover { filter: brightness(1.08); }
+    .btn-connect:active { filter: brightness(.95); }
+    .btn-disconnect {
+      background: var(--red);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 11px 24px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: filter .15s;
+    }
+    .btn-disconnect:hover { filter: brightness(1.08); }
+
+    /* ── CONTACTS SECTION ── */
+    #contacts-section {
+      background: var(--card-bg);
+      border-radius: var(--card-radius);
+      padding: 24px;
+      box-shadow: var(--card-shadow);
+      display: none;
+    }
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 18px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid var(--light-gray);
+    }
+    .section-title { font-size: 18px; font-weight: 700; color: #1a1a2e; }
+    .btn-add-contact {
+      background: var(--green);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 18px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: filter .15s;
+    }
+    .btn-add-contact:hover { filter: brightness(1.08); }
+
+    /* ── CONTACTS TABLE ── */
+    .contacts-list { display: flex; flex-direction: column; gap: 8px; }
+    .contact-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      background: var(--light-gray);
+      border-radius: 8px;
+      transition: background .15s;
+    }
+    .contact-row:hover { background: #e8edf2; }
+    .contact-avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      font-weight: 700;
+      color: #fff;
+      flex-shrink: 0;
+    }
+    .contact-info { flex: 1; min-width: 0; }
+    .contact-name { font-size: 14px; font-weight: 600; color: #1a1a2e; }
+    .contact-sub { font-size: 12px; color: #999; margin-top: 2px; }
+    .contact-actions { display: flex; gap: 6px; flex-shrink: 0; }
+    .btn-action {
+      background: none;
+      border: none;
+      font-size: 16px;
+      cursor: pointer;
+      padding: 5px;
+      border-radius: 6px;
+      transition: background .15s;
+    }
+    .btn-action:hover { background: rgba(0,0,0,.08); }
+
+    /* ── CONTACT FORM ── */
+    #contact-form {
+      background: var(--card-bg);
+      border-radius: var(--card-radius);
+      padding: 24px;
+      box-shadow: var(--card-shadow);
+      display: none;
+      margin-bottom: 24px;
+    }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .form-grid.full { grid-template-columns: 1fr; }
+    .btn-save {
+      background: var(--green);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 12px 24px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      width: 100%;
+      margin-top: 12px;
+      transition: filter .15s;
+    }
+    .btn-save:hover { filter: brightness(1.08); }
+    .btn-cancel {
+      background: #f0f0f0;
+      color: #666;
+      border: none;
+      border-radius: 8px;
+      padding: 12px 24px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      width: 100%;
+      margin-top: 8px;
+      transition: filter .15s;
+    }
+    .btn-cancel:hover { filter: brightness(.95); }
+
+    /* ── STATUS MESSAGE ── */
+    #status-message {
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      font-size: 13px;
+      display: none;
+    }
+    #status-message.success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+    #status-message.error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+    #status-message.info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+
+    /* ── EMPTY STATE ── */
+    .empty-state {
+      text-align: center;
+      padding: 48px 24px;
+      color: #999;
+    }
+    .empty-icon { font-size: 48px; margin-bottom: 12px; }
+    .empty-title { font-size: 16px; font-weight: 600; color: #666; margin-bottom: 6px; }
+
+    @media (max-width: 600px) {
+      #header h1 { font-size: 20px; }
+      #main { padding: 16px; }
+      #connection-form, #contact-form, #contacts-section { padding: 16px; }
+      .form-row { flex-direction: column; }
+      .form-group { width: 100%; }
+      .form-grid { grid-template-columns: 1fr; }
+      .contact-row { flex-wrap: wrap; }
+      .contact-actions { width: 100%; justify-content: flex-end; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── HEADER ── -->
+<div id="header">
+  <div>
+    <h1>📞 Speed Dialer Admin</h1>
+    <div id="header-status">
+      <span class="status-dot"></span>
+      <span id="status-text">Not connected</span>
+    </div>
+  </div>
+</div>
+
+<!-- ── MAIN CONTENT ── -->
+<div id="main">
+  <div class="container">
+    <!-- Connection Form -->
+    <div id="connection-form">
+      <h3 class="form-title">Connect to Device</h3>
+      <div id="status-message"></div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Device Admin ID</label>
+          <input type="text" id="device-id" class="form-input" placeholder="e.g., admin-abc123" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Admin Password</label>
+          <input type="password" id="admin-password" class="form-input" placeholder="••••••••" autocomplete="off">
+        </div>
+        <button id="btn-connect" class="btn-connect">🔗 Connect</button>
+      </div>
+    </div>
+
+    <!-- Contacts Section -->
+    <div id="contacts-section">
+      <div class="section-header">
+        <h2 class="section-title">👥 Contacts</h2>
+        <button id="btn-add-new" class="btn-add-contact">➕ Add Contact</button>
+      </div>
+      <div id="contacts-list" class="contacts-list"></div>
+    </div>
+
+    <!-- Contact Form -->
+    <div id="contact-form">
+      <h3 class="form-title" id="form-title">Add New Contact</h3>
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">First Name *</label>
+          <input type="text" id="cf-firstName" class="form-input" placeholder="John">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Last Name *</label>
+          <input type="text" id="cf-lastName" class="form-input" placeholder="Doe">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Nickname *</label>
+          <input type="text" id="cf-nickName" class="form-input" placeholder="John">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Relationship</label>
+          <select id="cf-relationship" class="form-input">
+            <option value="">—</option>
+            <option value="Spouse">Spouse</option>
+            <option value="Daughter">Daughter</option>
+            <option value="Son">Son</option>
+            <option value="Mother">Mother</option>
+            <option value="Father">Father</option>
+            <option value="Sister">Sister</option>
+            <option value="Brother">Brother</option>
+            <option value="Grandchild">Grandchild</option>
+            <option value="Friend">Friend</option>
+            <option value="Neighbor">Neighbor</option>
+            <option value="Doctor">Doctor</option>
+            <option value="Caregiver">Caregiver</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Phone Number</label>
+          <input type="tel" id="cf-phone" class="form-input" placeholder="555 123 4567">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Phone Type</label>
+          <select id="cf-phoneType" class="form-input">
+            <option value="mobile">Mobile</option>
+            <option value="home">Home</option>
+            <option value="work">Work</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div class="form-group full">
+          <label class="form-label">Country Code</label>
+          <input type="text" id="cf-countryCode" class="form-input" placeholder="+1">
+        </div>
+        <div class="form-group full">
+          <label class="form-label">Email Address</label>
+          <input type="email" id="cf-email" class="form-input" placeholder="john@example.com">
+        </div>
+        <div class="form-group full">
+          <label class="form-label">Speed Dialer ID</label>
+          <input type="text" id="cf-peerId" class="form-input" placeholder="sd-abc123" style="font-family: monospace;">
+        </div>
+      </div>
+      <button id="btn-save-contact" class="btn-save">💾 Save Contact</button>
+      <button id="btn-cancel-form" class="btn-cancel">Cancel</button>
+    </div>
+
+    <!-- Empty State -->
+    <div id="empty-state" class="empty-state">
+      <div class="empty-icon">🔗</div>
+      <div class="empty-title">Not Connected</div>
+      <p style="font-size: 13px;">Enter a device's admin ID and password above to connect and manage its contacts.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════
+const state = {
+  peer: null,
+  dataConnection: null,
+  isConnected: false,
+  deviceId: null,
+  contacts: [],
+  editingId: null,
+};
+
+// ═══════════════════════════════════════════════════════════════
+// PEERJS SETUP
+// ═══════════════════════════════════════════════════════════════
+function initPeerAdmin() {
+  try {
+    state.peer = new Peer({
+      debug: 0,
+      config: {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+        ]
+      }
+    });
+  } catch(e) {
+    showStatus('Failed to initialize connection system', 'error');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CONNECTION
+// ═══════════════════════════════════════════════════════════════
+document.getElementById('btn-connect').addEventListener('click', async () => {
+  const deviceId = document.getElementById('device-id').value.trim();
+  const password = document.getElementById('admin-password').value;
+
+  if (!deviceId || !password) {
+    showStatus('Please enter both device ID and password', 'error');
+    return;
+  }
+
+  state.deviceId = deviceId;
+  state.dataConnection = state.peer.connect(deviceId, { reliable: true });
+
+  state.dataConnection.on('open', () => {
+    state.dataConnection.send({
+      type: 'auth',
+      password: password,
+    });
+  });
+
+  state.dataConnection.on('data', handleAdminMessage);
+
+  state.dataConnection.on('error', (err) => {
+    showStatus('Connection error: Device not found or already connected', 'error');
+    state.isConnected = false;
+    updateConnectionStatus();
+  });
+
+  state.dataConnection.on('close', () => {
+    state.isConnected = false;
+    updateConnectionStatus();
+    showStatus('Disconnected from device', 'info');
+  });
+});
+
+function handleAdminMessage(data) {
+  if (data.type === 'authSuccess') {
+    state.isConnected = true;
+    updateConnectionStatus();
+    document.getElementById('connection-form').style.display = 'none';
+    document.getElementById('contacts-section').style.display = 'block';
+    document.getElementById('empty-state').style.display = 'none';
+    showStatus('Connected successfully', 'success');
+    loadContacts();
+  } else if (data.type === 'authFailed') {
+    showStatus('Invalid password', 'error');
+    state.dataConnection = null;
+    state.isConnected = false;
+    updateConnectionStatus();
+  } else if (data.type === 'contactsList') {
+    state.contacts = data.contacts || [];
+    renderContacts();
+  } else if (data.type === 'contactAdded') {
+    showStatus('Contact added successfully', 'success');
+    loadContacts();
+    clearContactForm();
+  } else if (data.type === 'contactUpdated') {
+    showStatus('Contact updated successfully', 'success');
+    loadContacts();
+    clearContactForm();
+  } else if (data.type === 'contactDeleted') {
+    showStatus('Contact deleted successfully', 'success');
+    loadContacts();
+  } else if (data.type === 'error') {
+    showStatus('Error: ' + (data.message || 'Unknown error'), 'error');
+  }
+}
+
+function updateConnectionStatus() {
+  const statusDot = document.querySelector('.status-dot');
+  const statusText = document.getElementById('status-text');
+
+  if (state.isConnected) {
+    statusDot.classList.remove('error');
+    statusDot.classList.add('connected');
+    statusText.textContent = 'Connected';
+  } else {
+    statusDot.classList.remove('connected');
+    statusDot.classList.add('error');
+    statusText.textContent = 'Not connected';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CONTACTS MANAGEMENT
+// ═══════════════════════════════════════════════════════════════
+function loadContacts() {
+  if (!state.dataConnection) return;
+  state.dataConnection.send({ type: 'listContacts' });
+}
+
+function renderContacts() {
+  const list = document.getElementById('contacts-list');
+  list.innerHTML = '';
+
+  if (state.contacts.length === 0) {
+    list.innerHTML = '<div style="text-align: center; padding: 40px 20px; color: #999;"><div style="font-size: 32px; margin-bottom: 12px;">📋</div><p>No contacts yet</p></div>';
+    return;
+  }
+
+  state.contacts.forEach(c => {
+    const row = document.createElement('div');
+    row.className = 'contact-row';
+
+    const name = c.nickName || c.firstName || '?';
+    const initials = (c.firstName ? c.firstName[0] : '?') + (c.lastName ? c.lastName[0] : '');
+    const bgColor = getColorFor(name);
+
+    const fullName = c.firstName + (c.lastName ? ' ' + c.lastName : '');
+    const sub = [];
+    if (c.phone) sub.push(c.countryCode + ' ' + c.phone);
+    if (c.email) sub.push(c.email);
+
+    row.innerHTML = `
+      <div class="contact-avatar" style="background: ${bgColor}">${initials.toUpperCase()}</div>
+      <div class="contact-info">
+        <div class="contact-name">${escapeHtml(fullName)}</div>
+        <div class="contact-sub">${sub.length > 0 ? escapeHtml(sub.join(' · ')) : (c.peerId ? escapeHtml(c.peerId) : 'No info')}</div>
+      </div>
+      <div class="contact-actions">
+        <button class="btn-action" title="Edit" data-edit="${c.id}">✏️</button>
+        <button class="btn-action" title="Delete" data-delete="${c.id}">🗑️</button>
+      </div>
+    `;
+
+    row.querySelector('[data-edit]').addEventListener('click', () => openEditContact(c));
+    row.querySelector('[data-delete]').addEventListener('click', () => deleteContact(c.id));
+
+    list.appendChild(row);
+  });
+}
+
+function openEditContact(contact) {
+  state.editingId = contact.id;
+  document.getElementById('form-title').textContent = 'Edit Contact';
+  document.getElementById('cf-firstName').value = contact.firstName || '';
+  document.getElementById('cf-lastName').value = contact.lastName || '';
+  document.getElementById('cf-nickName').value = contact.nickName || '';
+  document.getElementById('cf-relationship').value = contact.relationship || '';
+  document.getElementById('cf-phone').value = contact.phone || '';
+  document.getElementById('cf-phoneType').value = contact.phoneType || 'mobile';
+  document.getElementById('cf-countryCode').value = contact.countryCode || '+1';
+  document.getElementById('cf-email').value = contact.email || '';
+  document.getElementById('cf-peerId').value = contact.peerId || '';
+  document.getElementById('contact-form').style.display = 'block';
+  document.getElementById('cf-firstName').focus();
+}
+
+function clearContactForm() {
+  state.editingId = null;
+  document.getElementById('form-title').textContent = 'Add New Contact';
+  document.getElementById('cf-firstName').value = '';
+  document.getElementById('cf-lastName').value = '';
+  document.getElementById('cf-nickName').value = '';
+  document.getElementById('cf-relationship').value = '';
+  document.getElementById('cf-phone').value = '';
+  document.getElementById('cf-phoneType').value = 'mobile';
+  document.getElementById('cf-countryCode').value = '+1';
+  document.getElementById('cf-email').value = '';
+  document.getElementById('cf-peerId').value = '';
+  document.getElementById('contact-form').style.display = 'none';
+}
+
+document.getElementById('btn-add-new').addEventListener('click', () => {
+  state.editingId = null;
+  clearContactForm();
+  document.getElementById('contact-form').style.display = 'block';
+});
+
+document.getElementById('btn-cancel-form').addEventListener('click', clearContactForm);
+
+document.getElementById('btn-save-contact').addEventListener('click', () => {
+  const contact = {
+    id: state.editingId,
+    firstName: document.getElementById('cf-firstName').value.trim(),
+    lastName: document.getElementById('cf-lastName').value.trim(),
+    nickName: document.getElementById('cf-nickName').value.trim(),
+    relationship: document.getElementById('cf-relationship').value,
+    phone: document.getElementById('cf-phone').value.trim(),
+    phoneType: document.getElementById('cf-phoneType').value,
+    countryCode: document.getElementById('cf-countryCode').value,
+    email: document.getElementById('cf-email').value.trim(),
+    peerId: document.getElementById('cf-peerId').value.trim(),
+    showOnPanel: true,
+  };
+
+  if (!contact.firstName || !contact.lastName || !contact.nickName) {
+    showStatus('First name, last name, and nickname are required', 'error');
+    return;
+  }
+
+  if (!state.dataConnection) {
+    showStatus('Not connected to device', 'error');
+    return;
+  }
+
+  if (state.editingId) {
+    state.dataConnection.send({
+      type: 'editContact',
+      contact: contact,
+    });
+  } else {
+    state.dataConnection.send({
+      type: 'addContact',
+      contact: contact,
+    });
+  }
+});
+
+function deleteContact(contactId) {
+  if (!confirm('Delete this contact?')) return;
+
+  if (!state.dataConnection) {
+    showStatus('Not connected to device', 'error');
+    return;
+  }
+
+  state.dataConnection.send({
+    type: 'deleteContact',
+    id: contactId,
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// UTILS
+// ═══════════════════════════════════════════════════════════════
+const COLORS = ['#e74c3c', '#3498db', '#2ecc71', '#9b59b6', '#e67e22', '#1abc9c', '#e91e63', '#ff5722', '#607d8b'];
+
+function getColorFor(name) {
+  let n = 0;
+  for (let c of (name || '?')) {
+    n += c.charCodeAt(0);
+  }
+  return COLORS[n % COLORS.length];
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function showStatus(msg, type) {
+  const el = document.getElementById('status-message');
+  el.textContent = msg;
+  el.className = type;
+  el.style.display = 'block';
+  if (type !== 'error') {
+    setTimeout(() => {
+      el.style.display = 'none';
+    }, 3500);
+  }
+}
+
+// Initialize
+initPeerAdmin();
+</script>
+</body>
+</html>
